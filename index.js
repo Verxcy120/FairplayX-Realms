@@ -16,20 +16,20 @@ const client = new discord.Client({
 client.on('ready', () => {
     log(`Logged in as ${client.user.username}!`);
     log('Connecting to realms...');
-    config.realms.forEach((realm) => {
-        realms.spawnBot(realm);
-    });
+    realms.setDiscordClient(client); // Set Discord client before spawning bot
+    realms.spawnBot(); // No need to pass realm parameter anymore
 });
+
 
 // Handle messages and commands
 client.on('messageCreate', (message) => {
     const { content, author, channel } = message;
     if (author.bot) return;
 
-    // Relay all chat messages from the specified channel to Minecraft (no command needed)
-    const relayChannelId = config.relayChannelId; // This is the channel you want to relay messages from
+    // Get the chat channel ID from the first realm (or loop through all realms if needed)
+    const chatChannelId = config.realms[0].logChannels.chat;
 
-    if (channel.id === relayChannelId) {
+    if (channel.id === chatChannelId) {
         // Relaying messages from Discord to Minecraft
         realms.relayMessageFromDiscordToMinecraft(message);
     }
