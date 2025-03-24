@@ -1,3 +1,13 @@
+**FAIRPLAYX IS MOVING DISCORD SERVERS AND GITHUBS**
+
+- https://discord.gg/72JwFd6VUS
+
+
+
+
+
+
+
 join the Discord Server - https://discord.gg/cH2brPWvw3 -
 
 Features
