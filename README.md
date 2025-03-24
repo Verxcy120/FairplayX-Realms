@@ -8,7 +8,6 @@
 
 
 
-join the Discord Server - https://discord.gg/cH2brPWvw3 -
 
 Features
 | **FairplayX V1.0.0 Beta**                  | ⚡FairplayX Open Src    |  FairplayX AC ⚡ 
