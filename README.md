@@ -1,6 +1,6 @@
 **FAIRPLAYX IS MOVING DISCORD SERVERS AND GITHUBS**
 
-- https://discord.gg/72JwFd6VUS
+- https://discord.gg/g7hpSvsqM9
 
 
 
