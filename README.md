@@ -2,7 +2,8 @@
 
 - https://discord.gg/5QHDW69qFF
 
-
+**Fairplay Pack** REQIURED
+- https://github.com/Verxcy120/FairplayX-Pack/tree/main
 
 
 
