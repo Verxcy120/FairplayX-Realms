@@ -12,8 +12,6 @@ if (!realmConfig.logChannels) throw new Error('No log channels configured');
 
 const players = new Map();
 const realmClients = new Map();
-const packetCounts = new Map();
-const leftPlayers = new Set();
 
 const devicetotid = {
     "Android": "1739947436",
@@ -43,20 +41,47 @@ const devices = [
 
 const LEAVE_THRESHOLD = 7000;
 
-// --- Invalid Characters Checker ---
+// --- Helper: Invalid Character Check ---
 function hasInvalidCharacters(name) {
-    // Allowed characters: a-z, A-Z, 0-9, underscores, dashes
     const validPattern = /^[a-zA-Z0-9_-]+$/;
     return !validPattern.test(name);
 }
 
-function trackPacket(username, type) {
-    if (!packetCounts.has(username)) {
-        packetCounts.set(username, { count: 1, firstPacketTime: Date.now(), badPackets: 0 });
-    } else {
-        const packetInfo = packetCounts.get(username);
-        packetInfo.count++;
-        if (type === 'bad') packetInfo.badPackets++;
+// --- Helper: Alt Account Check ---
+async function isAltAccount(xuid, username, auth) {
+    try {
+        const response = await axios.get(`https://profile.xboxlive.com/users/xuid(${xuid})/profile/settings`, {
+            headers: {
+                "Authorization": `XBL3.0 x=${auth.userHash};${auth.XSTSToken}`,
+                "Accept": "application/json",
+                "x-xbl-contract-version": 2
+            },
+            params: {
+                settings: 'Gamerscore,People,Followers'
+            }
+        });
+
+        const settings = response.data.profileUsers[0].settings.reduce((acc, setting) => {
+            acc[setting.id] = setting.value;
+            return acc;
+        }, {});
+
+        const gamerScore = parseInt(settings.Gamerscore || "0", 10);
+        const friendsCount = parseInt(settings.People || "0", 10);
+        const followersCount = parseInt(settings.Followers || "0", 10);
+
+        log(`Alt Check for ${username}: Gamerscore=${gamerScore}, Friends=${friendsCount}, Followers=${followersCount}`);
+
+        if (gamerScore < config.altSystem.maxGamerScore ||
+            friendsCount < config.altSystem.maxFriends ||
+            followersCount < config.altSystem.maxFollowers) {
+            return { isAlt: true, gamerScore, friendsCount, followersCount };
+        }
+
+        return { isAlt: false };
+    } catch (err) {
+        log(`Error checking alt for ${username}: ${err.message}`);
+        return { isAlt: false };
     }
 }
 
@@ -114,20 +139,36 @@ async function spawnBot() {
             const os = typeof osRaw === 'number' ? devices[osRaw] : osRaw;
             currentPlayers.add(username);
 
-            // --- Invalid Character Check ---
+            // --- Invalid Character Detection ---
             if (hasInvalidCharacters(username)) {
                 log(`Kicking ${username} - invalid characters in name`);
                 sendCommand(client, `/kick "${username}" Invalid characters in name`);
                 sendEmbed({
                     title: 'Player Kicked',
-                    description: `${username} was kicked from the realm\nReason: Invalid characters in name`,
+                    description: `${username} was kicked\nReason: Invalid characters in name`,
                     color: '#FF0000',
                     timestamp: true
                 }, realmConfig.logChannels.kicks, discordClient);
-                players.delete(username); // remove kicked player immediately
+                players.delete(username);
                 continue;
             }
-            // --- End Invalid Character Check ---
+
+            // --- Alt Detection System ---
+            if (!config.whitelist.includes(username) && config.altSystem) {
+                const altCheck = await isAltAccount(xuid, username, auth);
+                if (altCheck.isAlt) {
+                    log(`Kicking ${username} - Alt detected (G:${altCheck.gamerScore}, F:${altCheck.friendsCount}, Fo:${altCheck.followersCount})`);
+                    sendCommand(client, `/kick "${username}" Alt accounts are not allowed`);
+                    sendEmbed({
+                        title: 'Player Kicked',
+                        description: `${username} was kicked\nReason: Detected as alt account\nGamerscore: ${altCheck.gamerScore}\nFriends: ${altCheck.friendsCount}\nFollowers: ${altCheck.followersCount}`,
+                        color: '#FF0000',
+                        timestamp: true
+                    }, realmConfig.logChannels.kicks, discordClient);
+                    players.delete(username);
+                    continue;
+                }
+            }
 
             if (!players.has(username)) {
                 players.set(username, { data: player, lastSeen: Date.now() });
@@ -139,12 +180,13 @@ async function spawnBot() {
                     timestamp: true
                 }, realmConfig.logChannels.joinsAndLeaves, discordClient);
 
+                // --- Banned Device Detection ---
                 if (!config.whitelist.includes(username) && config.bannedDevices && config.bannedDevices.includes(os)) {
                     log(`Kicking ${username} - banned device: ${os}`);
                     sendCommand(client, `/kick "${username}" Banned device ${os} is not allowed`);
                     sendEmbed({
                         title: 'Player Kicked',
-                        description: `${username} was kicked from the realm\nReason: Banned device (${os}) is not allowed`,
+                        description: `${username} was kicked\nReason: Banned device (${os}) is not allowed`,
                         color: '#FF0000',
                         timestamp: true
                     }, realmConfig.logChannels.kicks, discordClient);
@@ -152,73 +194,71 @@ async function spawnBot() {
                     continue;
                 }
 
-                if (!config.whitelist.includes(username)) {
-                    try {
-                        const response = await axios.get(`https://userpresence.xboxlive.com/users/xuid(${xuid})`, {
-                            headers: {
-                                "Authorization": `XBL3.0 x=${auth.userHash};${auth.XSTSToken}`,
-                                "Accept": "application/json",
-                                "Accept-Language": "en-US",
-                                "x-xbl-contract-version": 3
+                // --- Device Spoof Detection ---
+                try {
+                    const presence = await axios.get(`https://userpresence.xboxlive.com/users/xuid(${xuid})`, {
+                        headers: {
+                            "Authorization": `XBL3.0 x=${auth.userHash};${auth.XSTSToken}`,
+                            "Accept": "application/json",
+                            "x-xbl-contract-version": 3
+                        }
+                    });
+
+                    if (presence.data.devices === undefined) {
+                        log(`Skipping spoof check for ${username} - private profile`);
+                    } else {
+                        const activeDevices = presence.data.devices.filter(device =>
+                            device.titles.some(title => title.name.startsWith("Minecraft") && title.state === "Active")
+                        );
+
+                        if (!activeDevices.length) {
+                            log(`Kicking ${username} - No active Minecraft found`);
+                            sendCommand(client, `/kick "${username}" No active Minecraft session found`);
+                            sendEmbed({
+                                title: 'Player Kicked',
+                                description: `${username} was kicked\nReason: No active Minecraft session`,
+                                color: '#FF0000',
+                                timestamp: true
+                            }, realmConfig.logChannels.kicks, discordClient);
+                            players.delete(username);
+                            continue;
+                        }
+
+                        let foundValidDevice = false;
+                        for (const device of activeDevices) {
+                            for (const title of device.titles) {
+                                if (devicetotid[os] === title.id) {
+                                    foundValidDevice = true;
+                                    break;
+                                }
                             }
-                        });
+                            if (foundValidDevice) break;
+                        }
 
-                        if (response.data.devices === undefined) {
-                            log(`Skipping device check for ${username} - private profile or appearing offline`);
-                        } else {
-                            const devicess = response.data.devices.filter(device =>
-                                device.titles.some(title => title.name.startsWith("Minecraft") && title.state === "Active")
-                            );
-
-                            if (!devicess.length) {
-                                log(`Kicking ${username} - no active Minecraft`);
-                                sendCommand(client, `/kick "${username}" No active Minecraft title found`);
-                                sendEmbed({
-                                    title: 'Player Kicked',
-                                    description: `${username} was kicked from the realm\nReason: No active Minecraft title found\nDevice: ${os}`,
-                                    color: '#FF0000',
-                                    timestamp: true
-                                }, realmConfig.logChannels.kicks, discordClient);
-                                players.delete(username);
-                                continue;
-                            }
-
-                            let foundValidDevice = false;
-                            for (const device of devicess) {
+                        if (!foundValidDevice) {
+                            let trueDevice = "Unknown";
+                            for (const device of activeDevices) {
                                 for (const title of device.titles) {
-                                    if (devicetotid[os] === title.id) {
-                                        foundValidDevice = true;
+                                    if (devicetotid[os] !== title.id && title.id !== "750323071") {
+                                        trueDevice = tidtodevice[title.id] || "Unknown";
                                         break;
                                     }
                                 }
-                                if (foundValidDevice) break;
+                                if (trueDevice !== "Unknown") break;
                             }
-
-                            if (!foundValidDevice) {
-                                let trueDevice = "Unknown";
-                                for (const device of devicess) {
-                                    for (const title of device.titles) {
-                                        if (devicetotid[os] !== title.id && title.id !== "750323071") {
-                                            trueDevice = tidtodevice[title.id] || "Unknown";
-                                            break;
-                                        }
-                                    }
-                                    if (trueDevice !== "Unknown") break;
-                                }
-                                log(`Kicking ${username} - device spoof detected (${os} vs ${trueDevice})`);
-                                sendCommand(client, `/kick "${username}" EditionFaker is not allowed`);
-                                sendEmbed({
-                                    title: 'Player Kicked',
-                                    description: `${username} was kicked from the realm\nReason: EditionFaker is not allowed (spoof detected: ${os} vs ${trueDevice})`,
-                                    color: '#FF0000',
-                                    timestamp: true
-                                }, realmConfig.logChannels.kicks, discordClient);
-                                players.delete(username);
-                            }
+                            log(`Kicking ${username} - Device Spoof detected (${os} vs ${trueDevice})`);
+                            sendCommand(client, `/kick "${username}" EditionFaker not allowed`);
+                            sendEmbed({
+                                title: 'Player Kicked',
+                                description: `${username} was kicked\nReason: EditionFaker (Spoofed Device: ${os} vs ${trueDevice})`,
+                                color: '#FF0000',
+                                timestamp: true
+                            }, realmConfig.logChannels.kicks, discordClient);
+                            players.delete(username);
                         }
-                    } catch (err) {
-                        log(`Error checking device for ${username}:`, err.message);
                     }
+                } catch (err) {
+                    log(`Error checking device for ${username}: ${err.message}`);
                 }
             } else {
                 const entry = players.get(username);
@@ -227,6 +267,7 @@ async function spawnBot() {
             }
         }
 
+        // --- Player Left Check ---
         for (const [username, entry] of players) {
             if (!currentPlayers.has(username)) {
                 setTimeout(() => {
@@ -243,49 +284,6 @@ async function spawnBot() {
                     }
                 }, LEAVE_THRESHOLD);
             }
-        }
-
-    });
-
-    client.on('text', (packet) => {
-        if (packet.type === 'translation') return;
-
-        const username = packet.source_name;
-        const message = packet.message;
-
-        if (packet.type === 'json') {
-            try {
-                const jsonMessage = JSON.parse(message);
-                if (jsonMessage.rawtext && jsonMessage.rawtext[0].text) {
-                    const text = jsonMessage.rawtext[0].text;
-                    if (text.includes('§9[Discord]')) return;
-
-                    const cleanMessage = text.replace(/§[0-9a-fk-or]/g, '');
-                    if (cleanMessage.includes('|')) {
-                        sendEmbed({
-                            title: 'Minecraft Chat',
-                            description: cleanMessage,
-                            color: '#5CD65C',
-                            footer: `From: ${realmConfig.realmName}`,
-                            timestamp: true
-                        }, realmConfig.logChannels.chat, discordClient);
-                    }
-                }
-            } catch (err) {
-                log('Error parsing JSON message:', err.message);
-            }
-            return;
-        }
-
-        if (packet.type === 'chat' && username && !username.includes('CONSOLE')) {
-            const cleanMessage = message.replace(/§[0-9a-fk-or]/g, '');
-            sendEmbed({
-                title: 'Minecraft Chat',
-                description: cleanMessage,
-                color: '#5CD65C',
-                footer: `From: ${realmConfig.realmName}`,
-                timestamp: true
-            }, realmConfig.logChannels.chat, discordClient);
         }
     });
 
