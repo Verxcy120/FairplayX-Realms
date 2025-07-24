@@ -15,11 +15,9 @@ const realmClients = new Map();
 const packetCounts = new Map();
 const leftPlayers = new Set();
 
-// Device mappings
 const devicetotid = {
     "Android": "1739947436",
     "iOS": "1810924247",
-
     "Xbox": "1828326430",
     "Windows": "896928775",
     "PlayStation": "2044456598",
@@ -43,8 +41,14 @@ const devices = [
     "Xbox", "WindowsPhone"
 ];
 
-// Define leave threshold in milliseconds (adjust as needed)
 const LEAVE_THRESHOLD = 7000;
+
+// --- Invalid Characters Checker ---
+function hasInvalidCharacters(name) {
+    // Allowed characters: a-z, A-Z, 0-9, underscores, dashes
+    const validPattern = /^[a-zA-Z0-9_-]+$/;
+    return !validPattern.test(name);
+}
 
 function trackPacket(username, type) {
     if (!packetCounts.has(username)) {
@@ -100,15 +104,30 @@ async function spawnBot() {
         if (!packet.records || !packet.records.records) return;
 
         const currentPlayers = new Set();
-        
+
         for (const player of packet.records.records) {
             if (!player || !player.username || player.username === client.username) continue;
-            
+
             const username = player.username;
             const xuid = player.xbox_user_id;
             const osRaw = player.build_platform;
             const os = typeof osRaw === 'number' ? devices[osRaw] : osRaw;
             currentPlayers.add(username);
+
+            // --- Invalid Character Check ---
+            if (hasInvalidCharacters(username)) {
+                log(`Kicking ${username} - invalid characters in name`);
+                sendCommand(client, `/kick "${username}" Invalid characters in name`);
+                sendEmbed({
+                    title: 'Player Kicked',
+                    description: `${username} was kicked from the realm\nReason: Invalid characters in name`,
+                    color: '#FF0000',
+                    timestamp: true
+                }, realmConfig.logChannels.kicks, discordClient);
+                players.delete(username); // remove kicked player immediately
+                continue;
+            }
+            // --- End Invalid Character Check ---
 
             if (!players.has(username)) {
                 players.set(username, { data: player, lastSeen: Date.now() });
@@ -120,7 +139,6 @@ async function spawnBot() {
                     timestamp: true
                 }, realmConfig.logChannels.joinsAndLeaves, discordClient);
 
-                // New banned device check
                 if (!config.whitelist.includes(username) && config.bannedDevices && config.bannedDevices.includes(os)) {
                     log(`Kicking ${username} - banned device: ${os}`);
                     sendCommand(client, `/kick "${username}" Banned device ${os} is not allowed`);
@@ -130,12 +148,10 @@ async function spawnBot() {
                         color: '#FF0000',
                         timestamp: true
                     }, realmConfig.logChannels.kicks, discordClient);
-                    players.delete(username); // remove kicked player immediately
+                    players.delete(username);
                     continue;
                 }
-                // End banned device check
 
-                // Skip device check for whitelisted players
                 if (!config.whitelist.includes(username)) {
                     try {
                         const response = await axios.get(`https://userpresence.xboxlive.com/users/xuid(${xuid})`, {
@@ -149,7 +165,6 @@ async function spawnBot() {
 
                         if (response.data.devices === undefined) {
                             log(`Skipping device check for ${username} - private profile or appearing offline`);
-                            // Do not kick user; skip further device verification.
                         } else {
                             const devicess = response.data.devices.filter(device =>
                                 device.titles.some(title => title.name.startsWith("Minecraft") && title.state === "Active")
@@ -164,7 +179,7 @@ async function spawnBot() {
                                     color: '#FF0000',
                                     timestamp: true
                                 }, realmConfig.logChannels.kicks, discordClient);
-                                players.delete(username); // remove kicked player immediately
+                                players.delete(username);
                                 continue;
                             }
 
@@ -178,7 +193,7 @@ async function spawnBot() {
                                 }
                                 if (foundValidDevice) break;
                             }
-                            
+
                             if (!foundValidDevice) {
                                 let trueDevice = "Unknown";
                                 for (const device of devicess) {
@@ -198,7 +213,7 @@ async function spawnBot() {
                                     color: '#FF0000',
                                     timestamp: true
                                 }, realmConfig.logChannels.kicks, discordClient);
-                                players.delete(username); // remove kicked player immediately
+                                players.delete(username);
                             }
                         }
                     } catch (err) {
@@ -212,12 +227,10 @@ async function spawnBot() {
             }
         }
 
-        // Delay removal of players not seen in the current packet
         for (const [username, entry] of players) {
             if (!currentPlayers.has(username)) {
                 setTimeout(() => {
                     const currentEntry = players.get(username);
-                    // If the player hasn't been updated in the last LEAVE_THRESHOLD ms, consider them left
                     if (currentEntry && (Date.now() - currentEntry.lastSeen >= LEAVE_THRESHOLD)) {
                         players.delete(username);
                         log(`Player left: ${username}`);
@@ -232,22 +245,21 @@ async function spawnBot() {
             }
         }
 
-
     });
 
     client.on('text', (packet) => {
         if (packet.type === 'translation') return;
-        
+
         const username = packet.source_name;
         const message = packet.message;
-        
+
         if (packet.type === 'json') {
             try {
                 const jsonMessage = JSON.parse(message);
                 if (jsonMessage.rawtext && jsonMessage.rawtext[0].text) {
                     const text = jsonMessage.rawtext[0].text;
                     if (text.includes('§9[Discord]')) return;
-                    
+
                     const cleanMessage = text.replace(/§[0-9a-fk-or]/g, '');
                     if (cleanMessage.includes('|')) {
                         sendEmbed({
@@ -264,7 +276,7 @@ async function spawnBot() {
             }
             return;
         }
-        
+
         if (packet.type === 'chat' && username && !username.includes('CONSOLE')) {
             const cleanMessage = message.replace(/§[0-9a-fk-or]/g, '');
             sendEmbed({
@@ -290,7 +302,7 @@ async function spawnBot() {
             color: '#FF0000',
             timestamp: true
         }, realmConfig.logChannels.kicks, discordClient);
-        
+
         setTimeout(() => spawnBot(), 5000);
     });
 
