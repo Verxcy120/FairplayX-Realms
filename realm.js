@@ -3,15 +3,53 @@ const AF = require('prismarine-auth');
 const bedrock = require('bedrock-protocol');
 const uuid = require('uuid');
 const config = require('./config.json');
-const { log, sendEmbed } = require('./utils');
+const { log, sendEmbed, setClient } = require('./utils');
+// Anticheat system disabled
 
 let discordClient = null;
 const realmConfig = config.realms[0];
-if (!realmConfig) throw new Error('No realm configuration found');
-if (!realmConfig.logChannels) throw new Error('No log channels configured');
+const serverConfig = config.servers && config.servers[0];
+
+// Check if we have either realm or server config
+if (!realmConfig && !serverConfig) {
+    throw new Error('No realm or server configuration found');
+}
+
+// Check which configuration is properly set up
+function isRealmConfigured(realm) {
+    return realm && realm.realmCode && realm.realmCode !== 'Your Realm Code' && realm.realmCode.trim() !== '';
+}
+
+function isServerConfigured(server) {
+    return server && server.host && server.port && 
+           server.host !== 'your.server.ip' && server.host.trim() !== '' &&
+           server.port !== 0;
+}
+
+const realmIsConfigured = isRealmConfigured(realmConfig);
+const serverIsConfigured = isServerConfigured(serverConfig);
+
+let activeConfig;
+if (serverIsConfigured && !realmIsConfigured) {
+    activeConfig = serverConfig;
+} else if (realmIsConfigured && !serverIsConfigured) {
+    activeConfig = realmConfig;
+} else if (serverIsConfigured && realmIsConfigured) {
+    // Both are configured, prioritize server
+    activeConfig = serverConfig;
+} else {
+    throw new Error('No valid realm or server configuration found. Please check your config.json');
+}
+if (!activeConfig.logChannels) throw new Error('No log channels configured');
 
 const players = new Map();
-const realmClients = new Map();
+const clients = new Map();
+const entityToPlayer = new Map(); // Map entity IDs to player usernames
+
+// Helper function to get player username by entity ID
+function getPlayerByEntityId(entityId) {
+    return entityToPlayer.get(entityId) || null;
+}
 
 const devicetotid = {
     "Android": "1739947436",
@@ -100,6 +138,7 @@ function sendCommand(client, command) {
 
 function setDiscordClient(client) {
     discordClient = client;
+    setClient(client); // Also set the client in utils.js
     log('Discord client set:', discordClient ? 'Connected' : 'Not connected');
 }
 
@@ -111,18 +150,41 @@ async function spawnBot() {
         flow: 'live',
     });
 
-    const client = bedrock.createClient({
-        username: config.username,
-        profilesFolder: './accounts',
-        realms: { realmInvite: realmConfig.realmCode },
-        conLog: log,
-    });
+    let client;
+    let connectionKey;
+    
+    if (activeConfig === serverConfig) {
+        // Connect to server using IP and port
+        client = bedrock.createClient({
+            username: config.username,
+            profilesFolder: './accounts',
+            host: serverConfig.host,
+            port: serverConfig.port,
+            conLog: log,
+        });
+        connectionKey = `${serverConfig.host}:${serverConfig.port}`;
+        log(`Connecting to server: ${serverConfig.serverName} at ${serverConfig.host}:${serverConfig.port}`);
+    } else if (activeConfig === realmConfig) {
+        // Connect to realm using realm code
+        client = bedrock.createClient({
+            username: config.username,
+            profilesFolder: './accounts',
+            realms: { realmInvite: realmConfig.realmCode },
+            conLog: log,
+        });
+        connectionKey = realmConfig.realmCode;
+        log(`Connecting to realm: ${realmConfig.realmName}`);
+    }
 
     const auth = await authFlow.getXboxToken();
-    realmClients.set(realmConfig.realmCode, client);
+    clients.set(connectionKey, client);
 
     client.on('spawn', () => {
-        log(`Bot spawned in realm: ${realmConfig.realmName}`);
+        if (activeConfig === realmConfig) {
+            log(`Bot spawned in realm: ${realmConfig.realmName}`);
+        } else {
+            log(`Bot spawned in server: ${serverConfig.serverName}`);
+        }
     });
 
     client.on('player_list', async (packet) => {
@@ -147,8 +209,9 @@ async function spawnBot() {
                     title: 'Player Kicked',
                     description: `${username} was kicked\nReason: Invalid characters in name`,
                     color: '#FF0000',
+                    channelId: activeConfig.logChannels.kicks,
                     timestamp: true
-                }, realmConfig.logChannels.kicks, discordClient);
+                });
                 players.delete(username);
                 continue;
             }
@@ -163,22 +226,47 @@ async function spawnBot() {
                         title: 'Player Kicked',
                         description: `${username} was kicked\nReason: Detected as alt account\nGamerscore: ${altCheck.gamerScore}\nFriends: ${altCheck.friendsCount}\nFollowers: ${altCheck.followersCount}`,
                         color: '#FF0000',
+                        channelId: activeConfig.logChannels.kicks,
                         timestamp: true
-                    }, realmConfig.logChannels.kicks, discordClient);
+                    });
                     players.delete(username);
                     continue;
                 }
             }
 
+            // --- Banned Player Check ---
+            if (config.bannedPlayers && config.bannedPlayers.includes(username)) {
+                log(`Kicking ${username} - player is banned`);
+                sendCommand(client, `/kick "${username}" You are banned from this server`);
+                sendEmbed({
+                    title: 'Player Kicked',
+                    description: `${username} was kicked\nReason: Player is banned`,
+                    color: '#FF0000',
+                    channelId: activeConfig.logChannels.kicks,
+                    timestamp: true
+                });
+                players.delete(username);
+                continue;
+            }
+
             if (!players.has(username)) {
                 players.set(username, { data: player, lastSeen: Date.now() });
+                
+                // Map entity ID to player username for anticheat
+                if (player.runtime_entity_id) {
+                    entityToPlayer.set(player.runtime_entity_id, username);
+                }
+                
+                // Anticheat system disabled
+                
                 log(`Player joined: ${username} on ${os}`);
                 sendEmbed({
                     title: 'Player Joined',
-                    description: `${username} joined the realm\nDevice: ${os}`,
+                    description: `${username} joined the ${activeConfig === realmConfig ? 'realm' : 'server'}\nDevice: ${os}`,
                     color: '#00FF00',
+                    channelId: activeConfig.logChannels.joinsAndLeaves,
                     timestamp: true
-                }, realmConfig.logChannels.joinsAndLeaves, discordClient);
+                });
 
                 // --- Banned Device Detection ---
                 if (!config.whitelist.includes(username) && config.bannedDevices && config.bannedDevices.includes(os)) {
@@ -188,8 +276,9 @@ async function spawnBot() {
                         title: 'Player Kicked',
                         description: `${username} was kicked\nReason: Banned device (${os}) is not allowed`,
                         color: '#FF0000',
+                        channelId: activeConfig.logChannels.kicks,
                         timestamp: true
-                    }, realmConfig.logChannels.kicks, discordClient);
+                    });
                     players.delete(username);
                     continue;
                 }
@@ -218,8 +307,9 @@ async function spawnBot() {
                                 title: 'Player Kicked',
                                 description: `${username} was kicked\nReason: No active Minecraft session`,
                                 color: '#FF0000',
+                                channelId: activeConfig.logChannels.kicks,
                                 timestamp: true
-                            }, realmConfig.logChannels.kicks, discordClient);
+                            });
                             players.delete(username);
                             continue;
                         }
@@ -252,8 +342,9 @@ async function spawnBot() {
                                 title: 'Player Kicked',
                                 description: `${username} was kicked\nReason: EditionFaker (Spoofed Device: ${os} vs ${trueDevice})`,
                                 color: '#FF0000',
+                                channelId: activeConfig.logChannels.kicks,
                                 timestamp: true
-                            }, realmConfig.logChannels.kicks, discordClient);
+                            });
                             players.delete(username);
                         }
                     }
@@ -273,14 +364,26 @@ async function spawnBot() {
                 setTimeout(() => {
                     const currentEntry = players.get(username);
                     if (currentEntry && (Date.now() - currentEntry.lastSeen >= LEAVE_THRESHOLD)) {
+                        // Clean up entity mapping
+                        for (const [entityId, playerName] of entityToPlayer) {
+                            if (playerName === username) {
+                                entityToPlayer.delete(entityId);
+                                break;
+                            }
+                        }
+                        
                         players.delete(username);
+                        
+                        // Anticheat system disabled
+                        
                         log(`Player left: ${username}`);
                         sendEmbed({
                             title: 'Player Left',
-                            description: `${username} left the realm`,
+                            description: `${username} left the ${activeConfig === realmConfig ? 'realm' : 'server'}`,
                             color: '#FFA500',
+                            channelId: activeConfig.logChannels.joinsAndLeaves,
                             timestamp: true
-                        }, realmConfig.logChannels.joinsAndLeaves, discordClient);
+                        });
                     }
                 }, LEAVE_THRESHOLD);
             }
@@ -288,27 +391,41 @@ async function spawnBot() {
     });
 
     client.on('error', (err) => {
-        log(`Bot error in realm ${realmConfig.realmName}: ${err.message}`);
+        const connectionName = activeConfig === realmConfig ? realmConfig.realmName : serverConfig.serverName;
+        log(`Bot error in ${activeConfig === realmConfig ? 'realm' : 'server'} ${connectionName}: ${err.message}`);
         setTimeout(() => spawnBot(), 5000);
     });
 
     client.on('kick', (reason) => {
-        log(`Bot was kicked from realm ${realmConfig.realmName}: ${reason}`);
+        const connectionName = activeConfig === realmConfig ? realmConfig.realmName : serverConfig.serverName;
+        log(`Bot was kicked from ${activeConfig === realmConfig ? 'realm' : 'server'} ${connectionName}: ${reason}`);
         sendEmbed({
-            title: 'Realm Kick',
-            description: `Bot was kicked from the realm\nReason: ${reason}`,
+            title: activeConfig === realmConfig ? 'Realm Kick' : 'Server Kick',
+            description: `Bot was kicked from the ${activeConfig === realmConfig ? 'realm' : 'server'}\nReason: ${reason}`,
             color: '#FF0000',
+            channelId: activeConfig.logChannels.kicks,
             timestamp: true
-        }, realmConfig.logChannels.kicks, discordClient);
+        });
 
         setTimeout(() => spawnBot(), 5000);
+    });
+
+    // --- Anticheat Packet Listeners ---
+    client.on('packet', (data, metadata) => {
+        // Anticheat system disabled - no packet processing
     });
 
     return client;
 }
 
 function relayMessageFromDiscordToMinecraft(message) {
-    const client = realmClients.get(realmConfig.realmCode);
+    let client;
+    if (activeConfig === realmConfig) {
+        client = clients.get(realmConfig.realmCode);
+    } else if (activeConfig === serverConfig) {
+        client = clients.get(`${serverConfig.host}:${serverConfig.port}`);
+    }
+    
     if (!client) return;
 
     try {
