@@ -3,6 +3,7 @@ const fs = require('fs');
 const config = require('./config.json');
 const realms = require('./realm');
 const { log, sendEmbed } = require('./utils');
+const commands = require('./commands/commands.js');
 
 const client = new discord.Client({
     intents: [
@@ -12,12 +13,44 @@ const client = new discord.Client({
     ],
 });
 
+// Create a collection to store commands
+client.commands = new discord.Collection();
+commands.forEach(command => {
+    client.commands.set(command.data.name, command);
+});
+
 // Logging function
 client.on('ready', () => {
     log(`Logged in as ${client.user.username}!`);
+    log(`Loaded ${client.commands.size} slash commands`);
     log('Connecting to realms...');
     realms.setDiscordClient(client); // Set Discord client before spawning bot
     realms.spawnBot(); // No need to pass realm parameter anymore
+});
+
+// Handle slash command interactions
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const command = client.commands.get(interaction.commandName);
+
+    if (!command) {
+        console.error(`No command matching ${interaction.commandName} was found.`);
+        return;
+    }
+
+    try {
+        await command.execute(interaction);
+    } catch (error) {
+        console.error('Error executing command:', error);
+        const errorMessage = { content: 'There was an error while executing this command!', ephemeral: true };
+        
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(errorMessage);
+        } else {
+            await interaction.reply(errorMessage);
+        }
+    }
 });
 
 
@@ -26,8 +59,13 @@ client.on('messageCreate', (message) => {
     const { content, author, channel } = message;
     if (author.bot) return;
 
-    // Get the chat channel ID from the first realm (or loop through all realms if needed)
-    const chatChannelId = config.realms[0].logChannels.chat;
+    // Get the chat channel ID from the first realm or server
+    let chatChannelId;
+    if (config.realms && config.realms[0]) {
+        chatChannelId = config.realms[0].logChannels.chat;
+    } else if (config.servers && config.servers[0]) {
+        chatChannelId = config.servers[0].logChannels.chat;
+    }
 
     if (channel.id === chatChannelId) {
         // Relaying messages from Discord to Minecraft
