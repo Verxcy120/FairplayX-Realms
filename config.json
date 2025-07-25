@@ -20,8 +20,8 @@
     "whitelist": ["Your Bots name", "any username can go here"],
     "bannedDevices": ["Windows", "Android", "iOS", "WindowsPhone", "Win32", "Dedicated"],
     "altSystem": {
-        "maxGamerScore": 500,
-        "maxFriends": 25,
-        "maxFollowers": 5
+        "maxGamerScore": 0,
+        "maxFriends": 0,
+        "maxFollowers": 0
     }
 }
