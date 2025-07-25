@@ -1,27 +1,55 @@
 {
-    "botToken": "YOUR_BOT_TOKEN_HERE",
-    "clientId": "YOUR_CLIENT_ID_HERE",
-    "username": "Eclipse AC",
-    "realms": [
-        {
-            "realmName": "Your realm name",
-            "realmCode": "Your Realm Code",
-            "logChannels": {
-                "chat": "discord channel ID",
-                "kicks": "discord channel ID",
-                "joinsAndLeaves": "discord channel ID"
-            },
-            "modules": {
-                "deviceFilter": true
-            }
-        }
-    ],
-    "admins": ["your discord ID"],
-    "whitelist": ["Your Bots name", "any username can go here"],
-    "bannedDevices": ["Windows", "Android", "iOS", "WindowsPhone", "Win32", "Dedicated"],
-    "altSystem": {
-        "maxGamerScore": 0,
-        "maxFriends": 0,
-        "maxFollowers": 0
+  "botToken": "YOUR_BOT_TOKEN_HERE",
+  "clientId": "YOUR_CLIENT_ID_HERE",
+  "username": "Your Bot Name",
+  "realms": [
+    {
+      "realmName": "Your realm name",
+      "realmCode": "Your Realm Code",
+      "logChannels": {
+        "chat": "YOUR_CHANNEL_ID_HERE",
+        "kicks": "YOUR_CHANNEL_ID_HERE",
+        "joinsAndLeaves": "YOUR_CHANNEL_ID_HERE"
+      },
+      "modules": {
+        "deviceFilter": true
+      }
     }
+  ],
+  "servers": [
+    {
+      "serverName": "Your Server Name",
+      "host": "YOUR_SERVER_IP_HERE",
+      "port": 19132,
+      "logChannels": {
+        "chat": "YOUR_CHANNEL_ID_HERE",
+        "kicks": "YOUR_CHANNEL_ID_HERE",
+        "joinsAndLeaves": "YOUR_CHANNEL_ID_HERE"
+      },
+      "modules": {
+        "deviceFilter": true
+      }
+    }
+  ],
+  "admins": [
+    "your_username_here"
+  ],
+  "whitelist": [
+    "Your Bot Name",
+    "example_player"
+  ],
+  "bannedDevices": [
+    "Windows",
+    "Android",
+    "iOS",
+    "WindowsPhone",
+    "Win32",
+    "Dedicated"
+  ],
+  "altSystem": {
+    "maxGamerScore": 0,
+    "maxFriends": 0,
+    "maxFollowers": 0
+  },
+  "bannedPlayers": []
 }
