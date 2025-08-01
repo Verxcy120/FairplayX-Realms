@@ -1,32 +1,62 @@
-**FAIRPLAYX DISCORD**
+# 🎮 FairplayX
 
-- https://discord.gg/5QHDW69qFF
+**FairplayX** is a powerful utility bot designed for **Minecraft Bedrock Realms**. It serves as both a moderation assistant and protection layer for your realm, with seamless Discord integration.
 
-**Fairplay Pack** REQIURED
-- https://github.com/Verxcy120/FairplayX-Pack/tree/main
+> 🛡️ Stop alts. Filter devices. Run commands. FairplayX helps you secure and manage your Bedrock Realm efficiently.
 
+---
 
+## 📌 Important Links
 
+- 💬 **FairplayX Discord Support Server**  
+  [https://discord.gg/5QHDW69qFF](https://discord.gg/5QHDW69qFF)
 
+- 📦 **FairplayX Resource Pack (Required)**  
+  [https://github.com/Verxcy120/FairplayX-Pack/tree/main](https://github.com/Verxcy120/FairplayX-Pack/tree/main)
 
+---
 
-Features
-| **FairplayX V1.0.0 Beta**                  | ⚡FairplayX Open Src    |  FairplayX AC ⚡ 
-| ------------------------------------------ | ----------------------- | ------------------------------------- |
-| Open source                                | ✅                      | ⚠️                                   |
-| Free                                       | ✅                      | ⚠️                                   |
-| Supports custom modules                    | ⚠️                      | ⚠️                                   |
-| Self hosted                                | ✅                      | ⚠️                                   |
-| Anti Crasher                               | ✅                      | ⚠️                                   |
-| Under 800ms Authentication speeds          | ✅                      | ⚠️                                   |
-| Detects Most Crash/Spam Bots               | ⚠️                      | ⚠️                                   |
-| 99.99% uptime                              | ✅                      | ⚠️                                   |
-| Realm manager built in                     | ⚠                       | ⚠️                                   |
-| Realm to discord                           | ✅                      | ⚠️                                   |
-| Free Discord Support                       | ✅                      | ⚠️                                   |
-| Global ban Database                        | ⚠️                      | ⚠️                                   |
+## 🚀 Features
 
-- ✅ Yes It Does Have It
-- ⚠ kinda has it
-- ⚠️ A Coming Soon Feature 
-- ❌ No It Does Not Have It / Mostly Never Will Be Added
+- 🧠 **Alt Detection**  
+  Automatically detects and logs suspicious or alternate accounts.
+
+- 📱 **Device Filtering**  
+  Blocks or flags players based on the device/platform they're using (e.g. Android, Windows, iOS).
+
+- 🧾 **Custom Command Support**  
+  Integrated Discord commands for moderation and management.
+
+- 💬 **Discord Integration**  
+  Full support via Discord.js for real-time realm event logs and control.
+
+- 🔄 **Auto Detection & Filtering**  
+  No manual setup required — plug in and protect your realm right away.
+
+---
+
+## 🧱 Tech Stack
+
+- **Minecraft Bedrock v1.21.93**
+- **Node.js**
+- **Discord.js**
+- **bedrock-protocol**
+- Additional libraries depending on setup
+
+---
+
+## 🛠️ Installation & Setup
+
+> ⚠️ _Detailed instructions coming soon — for now, manual setup or contribution required._
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/FairplayX.git
+
+# Install dependencies
+cd FairplayX
+npm install
+
+# Configure your bot (edit config.json)
+# Then start the bot:
+node index.js
