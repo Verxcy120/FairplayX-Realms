@@ -4,6 +4,15 @@
 
 > 🛡️ Stop alts. Filter devices. Run commands. FairplayX helps you secure and manage your Bedrock Realm efficiently.
 
+
+<p align="left">
+  <img src="https://img.shields.io/badge/Minecraft-Bedrock_1.21.93-5C6BC0?style=for-the-badge&logo=minecraft&logoColor=white" />
+  <img src="https://img.shields.io/badge/Node.js-18.x+-339933?style=for-the-badge&logo=node.js&logoColor=white" />
+  <img src="https://img.shields.io/badge/Discord.js-v14+-5865F2?style=for-the-badge&logo=discord&logoColor=white" />
+  <img src="https://img.shields.io/badge/bedrock--protocol-CB3837?style=for-the-badge&logo=nintendo-switch&logoColor=white" />
+  <img src="https://img.shields.io/badge/GitHub-Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white" />
+</p>
+
 ---
 
 ## 📌 Important Links
@@ -33,17 +42,7 @@
 - 🔄 **Auto Detection & Filtering**  
   No manual setup required — plug in and protect your realm right away.
 
----
 
-## 🧱 Tech Stack
-
-- **Minecraft Bedrock v1.21.93**
-- **Node.js**
-- **Discord.js**
-- **bedrock-protocol**
-- Additional libraries depending on setup
-
----
 
 ## 🛠️ Installation & Setup
 
